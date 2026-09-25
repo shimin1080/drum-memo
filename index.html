@@ -140,6 +140,11 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .tag{display:flex;align-items:center;background:var(--field);border-radius:6px;padding:1px 2px 1px 8px;font-size:14px}
 .tag button{width:26px;height:26px;color:var(--sub)}
 .tagbox input{flex:1;min-width:120px;border:0;background:none;outline:none;padding:4px 0;font-size:16px}
+.tag-suggest{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
+.tag-suggest::-webkit-scrollbar{display:none}
+.sug{flex:none;border:1px solid var(--hair);border-radius:6px;padding:3px 10px;font-size:14px;color:var(--ink);transition:background-color .2s ease}
+.sug:active{background:var(--field)}
+.sug b{font-weight:600}
 .section:last-child{margin-bottom:48px}
 
 /* ---------- 楽器ポップアップ ---------- */
@@ -271,8 +276,9 @@ button{cursor:pointer;background:none;border:0;padding:0}
     <div class="section">
       <h2>タグ</h2>
       <div class="tagbox" id="tagbox">
-        <input id="tagInput" placeholder="タグを追加" aria-label="タグを追加" enterkeyhint="done">
+        <input id="tagInput" placeholder="タグを追加" aria-label="タグを追加" enterkeyhint="done" autocomplete="off" aria-controls="tagSuggest">
       </div>
+      <div class="tag-suggest" id="tagSuggest" role="listbox" aria-label="登録済みのタグ" hidden></div>
     </div>
   </div>
 </main>
@@ -1166,8 +1172,42 @@ $('#tagInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.isComposing){ e.preventDefault(); if (e.target.value.trim()){ addTags(e.target.value); e.target.value = ''; } }
   if (e.key === 'Backspace' && !e.target.value && state.editing.tags.length){ state.editing.tags.pop(); renderTags(); touch(state.editing); }
 });
-$('#tagInput').addEventListener('input', e => { if (/[,、，]/.test(e.target.value)){ addTags(e.target.value); e.target.value = ''; } });
-$('#tagInput').addEventListener('blur', e => { if (e.target.value.trim()){ addTags(e.target.value); e.target.value = ''; } });
+$('#tagInput').addEventListener('input', e => {
+  if (/[,、，]/.test(e.target.value)){ addTags(e.target.value); e.target.value = ''; }
+  suggestTags();
+});
+$('#tagInput').addEventListener('blur', e => {
+  if (e.target.value.trim()){ addTags(e.target.value); e.target.value = ''; }
+  $('#tagSuggest').hidden = true;
+});
+
+/* タグの予測候補：ほかのパターンで使ったタグから、入力中の文字を含むものを出す */
+// 全角・半角、大文字・小文字、カタカナ・ひらがなの違いは同じとみなす
+const tagKey = s => s.normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+function suggestTags(){
+  const box = $('#tagSuggest'), q = tagKey($('#tagInput').value.trim().replace(/^#/, ''));
+  const have = state.editing ? state.editing.tags : [];
+  const hits = !q ? [] : allTags()
+    .filter(t => !have.includes(t))
+    .map(t => ({t, i:tagKey(t).indexOf(q)}))
+    .filter(x => x.i >= 0)
+    .sort((a, b) => (a.i > 0) - (b.i > 0))        // 前方一致を先に（同じ条件なら使用回数の多い順のまま）
+    .slice(0, 8);
+  box.innerHTML = hits.map(x => {
+    const n = q.length;   // 太字で一致した部分を示す
+    return '<button class="sug" role="option" data-tag="' + esc(x.t) + '">#' +
+      esc(x.t.slice(0, x.i)) + '<b>' + esc(x.t.slice(x.i, x.i + n)) + '</b>' + esc(x.t.slice(x.i + n)) + '</button>';
+  }).join('');
+  box.hidden = !hits.length;
+}
+// 候補を押しても入力欄からフォーカスが外れない（外れると打ちかけの文字がタグになってしまう）
+$('#tagSuggest').addEventListener('pointerdown', e => { if (e.target.closest('.sug')) e.preventDefault(); });
+$('#tagSuggest').addEventListener('click', e => {
+  const b = e.target.closest('.sug'); if (!b) return;
+  const input = $('#tagInput');
+  input.value = ''; addTags(b.dataset.tag); suggestTags();
+  input.focus({preventScroll:true});
+});
 $('#tagbox').addEventListener('click', e => {
   const b = e.target.closest('.tag button');
   if (b){

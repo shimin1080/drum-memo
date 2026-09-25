@@ -144,18 +144,14 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .pop-vol input{flex:1;min-width:0;height:28px;margin:0;accent-color:var(--ink)}
 .pop-vol output{width:28px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums}
 
-/* ---------- シート ---------- */
-.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--bg);border-radius:14px 14px 0 0;
-  padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));max-height:75vh;overflow-y:auto}
-.sheet .wrap{padding:0}
-.sheet h3{font-size:13px;font-weight:400;color:var(--sub);text-align:center;margin:6px 16px 8px}
-.sheet-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:13px 20px;border-top:1px solid var(--hair);font-size:16px}
-.sheet-opt:disabled{color:var(--sub)}
-.sheet-opt.danger{color:var(--danger)}
-.sheet-opt .abbr{width:30px;font-weight:600;font-size:14px}
-.sheet-opt.cancel{justify-content:center;font-weight:600}
+/* ---------- 楽器追加メニュー ---------- */
+.inst-menu{position:fixed;z-index:19;width:220px;background:var(--bg);border:1px solid var(--hair);border-radius:12px;
+  box-shadow:0 8px 28px rgba(0,0,0,.18);padding:4px 0;overflow-y:auto;overscroll-behavior:contain}
+.menu-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 16px;font-size:15px;transition:background-color .2s ease}
+.menu-opt:active{background:var(--field)}
+.menu-opt .abbr{width:26px;font-weight:600;font-size:13px}
 
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}
 .dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:22;width:min(300px,calc(100% - 48px));
   background:var(--bg);border-radius:14px;overflow:hidden;text-align:center}
 .dialog p{margin:0;padding:20px 18px 18px;font-size:15px;line-height:1.6}
@@ -184,8 +180,6 @@ button{cursor:pointer;background:none;border:0;padding:0}
   transition:transform .22s cubic-bezier(.22,1,.36,1),background-color .25s ease,color .25s ease,border-color .25s ease,opacity .25s ease}
 .play-lg:active,.play-sm:active,.stepper button:active,.tbtn:active,.icon-btn:active,.chip:active{transform:scale(.9)}
 .btn-primary:active,.btn-line:active{transform:scale(.97)}
-.sheet-opt{transition:background-color .2s ease}
-.sheet-opt:active:not(:disabled){background:var(--field)}
 .dlg-btns button{transition:background-color .2s ease}
 .dlg-btns button:active{background:var(--field)}
 .item-open{transition:opacity .2s ease}
@@ -259,8 +253,8 @@ button{cursor:pointer;background:none;border:0;padding:0}
 
 <div class="pop-shade" id="popShade" hidden></div>
 <div class="inst-pop" id="instPop" role="dialog" aria-modal="true" hidden></div>
+<div class="inst-menu" id="instMenu" role="menu" aria-label="追加する楽器" hidden></div>
 <div class="backdrop" id="backdrop" hidden></div>
-<div class="sheet" id="sheet" role="dialog" aria-modal="true" hidden><div class="wrap" id="sheetBody"></div></div>
 <div class="dialog" id="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dlgMsg" hidden>
   <p id="dlgMsg"></p>
   <div class="dlg-btns"><button id="dlgCancel">キャンセル</button><button id="dlgOk">削除</button></div>
@@ -556,34 +550,8 @@ function stagger(els, max){
 }
 let busy = false;
 
-/* ===== シート・ダイアログ ===== */
+/* ===== ダイアログ ===== */
 const BD_IN = [{opacity:0}, {opacity:1}], BD_OUT = [{opacity:1}, {opacity:0}];
-function openSheet(title, options){
-  const body = $('#sheetBody');
-  body.innerHTML = (title ? '<h3>' + esc(title) + '</h3>' : '') +
-    options.map((o, i) => '<button class="sheet-opt' + (o.danger ? ' danger' : '') + '" data-i="' + i + '"' + (o.disabled ? ' disabled' : '') + '>' +
-      (o.abbr ? '<span class="abbr">' + esc(o.abbr) + '</span>' : '') + '<span>' + esc(o.label) + '</span></button>').join('') +
-    '<button class="sheet-opt cancel" data-i="-1">キャンセル</button>';
-  body.onclick = async e => {
-    const b = e.target.closest('.sheet-opt'); if (!b) return;
-    const o = options[+b.dataset.i];
-    await closeSheet();
-    if (o && o.run) o.run();
-  };
-  show($('#backdrop'), BD_IN, {duration:260, easing:'ease-out'});
-  show($('#sheet'), [{transform:'translateY(100%)'}, {transform:'none'}], {duration:420});
-  const first = body.querySelector('.sheet-opt:not([disabled])'); if (first) first.focus({preventScroll:true});
-}
-let sheetClosing = null;
-function closeSheet(){
-  if ($('#sheet').hidden) return Promise.resolve();
-  if (sheetClosing) return sheetClosing;
-  sheetClosing = Promise.all([
-    hide($('#backdrop'), BD_OUT, {duration:220, easing:'ease-in'}),
-    hide($('#sheet'), [{transform:'none'}, {transform:'translateY(100%)'}], {duration:240, easing:EASE_IN}),
-  ]).then(() => { sheetClosing = null; });
-  return sheetClosing;
-}
 let dlgResolve = null;
 const DLG_IN = [{opacity:0, transform:'translate(-50%,-50%) scale(.92)'}, {opacity:1, transform:'translate(-50%,-50%)'}];
 const DLG_OUT = [{opacity:1, transform:'translate(-50%,-50%)'}, {opacity:0, transform:'translate(-50%,-50%) scale(.96)'}];
@@ -607,8 +575,8 @@ async function answer(v){
 }
 $('#dlgOk').addEventListener('click', () => answer(true));
 $('#dlgCancel').addEventListener('click', () => answer(false));
-$('#backdrop').addEventListener('click', () => { if (dlgResolve) answer(false); else closeSheet(); });
-document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (dlgResolve) answer(false); else if (!$('#sheet').hidden) closeSheet(); });
+$('#backdrop').addEventListener('click', () => { if (dlgResolve) answer(false); });
+document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (dlgResolve) answer(false); else closeFloat(); });
 
 /* ===== 一覧 ===== */
 function miniSvg(p){
@@ -731,7 +699,7 @@ function discard(p){
 }
 function closeEditor(){
   if (busy) return;
-  closePop(true);
+  closeFloat(true);
   const p = state.editing;
   if (p && state.patterns.includes(p)) isBlank(p) ? discard(p) : flush(p);
   backToList();
@@ -891,10 +859,28 @@ $('#seq').addEventListener('pointercancel', e => endDrag(e, true));
 
 /* 楽器名タップ：音量フェーダーと削除のポップアップ */
 const ICON_VOL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
-let popOpen = null;
+/* ポップアップ・メニューは同時に1つだけ。開閉が重なっても表示が崩れないよう世代で管理する */
+let floatEl = null, floatGen = 0;
+function openFloat(el, frames){
+  floatGen++;
+  if (floatEl && floatEl !== el) floatEl.hidden = true;
+  el.getAnimations().forEach(a => a.cancel());
+  floatEl = el;
+  $('#popShade').hidden = false; el.hidden = false;
+  return () => anim(el, frames, {duration:240}).then(a => a && a.cancel());
+}
+async function closeFloat(instant){
+  const el = floatEl; if (!el) return;
+  const gen = ++floatGen;
+  floatEl = null;
+  $('#popShade').hidden = true;
+  if (!instant) await anim(el, [{opacity:1}, {opacity:0}], {duration:140, easing:'ease-in'});
+  if (gen === floatGen) el.hidden = true;
+  if (floatEl !== el) el.getAnimations().forEach(a => a.cancel());
+}
 function instrumentMenu(id, lab){
   const p = state.editing, ins = INSTRUMENTS[id], pop = $('#instPop'), vol = Math.round(volOf(p, id) * 100);
-  popOpen = id;
+  const same = floatEl === pop;
   pop.setAttribute('aria-label', ins.name);
   pop.innerHTML =
     '<div class="pop-head"><span class="pop-abbr">' + ins.label + '</span><span class="pop-name">' + ins.name + '</span>' +
@@ -902,12 +888,13 @@ function instrumentMenu(id, lab){
     '<div class="pop-vol">' + ICON_VOL +
       '<input type="range" id="instVol" min="0" max="100" step="1" value="' + vol + '" aria-label="' + ins.name + 'の音量">' +
       '<output id="instVolVal">' + vol + '</output></div>';
-  $('#popShade').hidden = false; pop.hidden = false;
+  const run = openFloat(pop, same
+    ? [{opacity:.4}, {opacity:1}]
+    : [{opacity:0, transform:'scale(.94)', transformOrigin:'left center'}, {opacity:1, transform:'none', transformOrigin:'left center'}]);
   const r = lab.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
   pop.style.left = Math.max(8, Math.min(r.right + 6, innerWidth - w - 8)) + 'px';
   pop.style.top = Math.max(8, Math.min(r.top + r.height / 2 - h / 2, innerHeight - h - 8)) + 'px';
-  anim(pop, [{opacity:0, transform:'scale(.94)', transformOrigin:'left center'}, {opacity:1, transform:'none', transformOrigin:'left center'}], {duration:240})
-    .then(a => a && a.cancel());
+  run();
 
   $('#instVol').oninput = e => {
     const v = +e.target.value;
@@ -916,7 +903,7 @@ function instrumentMenu(id, lab){
   };
   $('#instVol').onchange = () => { if (!isPlaying(p)){ audio(); hit(id, ctx.currentTime + 0.01, volOf(p, id)); } };
   $('#instDel').onclick = async () => {
-    await closePop();
+    await closeFloat();
     if (p.instruments.length <= 1) return;
     if (p.tracks[id].some(v => v) && !(await ask(ins.name + 'の打ち込みも消えます。外しますか？', '外す'))) return;
     await Promise.all([...document.querySelectorAll('#seq .row[data-row="' + id + '"]')].map(r => collapse(r)));
@@ -924,30 +911,48 @@ function instrumentMenu(id, lab){
     renderGrid(); touch(p);
   };
 }
-async function closePop(instant){
-  if (!popOpen) return;
-  popOpen = null;
-  $('#popShade').hidden = true;
-  if (instant){ $('#instPop').hidden = true; return; }
-  await hide($('#instPop'), [{opacity:1}, {opacity:0}], {duration:140, easing:'ease-in'});
-}
-$('#popShade').addEventListener('pointerdown', e => { e.preventDefault(); closePop(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && popOpen && !dlgResolve) closePop(); });
-window.addEventListener('scroll', () => { if (popOpen) closePop(true); }, {passive:true});
-window.addEventListener('resize', () => { if (popOpen) closePop(true); });
-$('#addInst').addEventListener('click', () => {
+/* 開いている間に外側を触ったとき：別の楽器名ならそのまま切り替え、それ以外は閉じる */
+$('#popShade').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const shade = e.currentTarget; shade.hidden = true;
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  shade.hidden = false;
+  const lab = under && under.closest && under.closest('#seq .lab');
+  if (lab && floatEl === $('#instPop')){ dragEndAt = performance.now(); instrumentMenu(lab.dataset.inst, lab); }
+  else closeFloat();
+});
+window.addEventListener('scroll', () => closeFloat(true), {passive:true});
+window.addEventListener('resize', () => closeFloat(true));
+
+/* 楽器の追加：ボタンの下に出るメニュー */
+function addInstrument(id){
   const p = state.editing;
+  p.tracks[id] = Array(stepsOf(p)).fill(0);
+  (p.volumes = p.volumes || {})[id] = 1;
+  // 定義順（上から金物→タム→スネア→キック）の位置に差し込む
+  const pos = p.instruments.findIndex(x => ORDER.indexOf(x) > ORDER.indexOf(id));
+  pos < 0 ? p.instruments.push(id) : p.instruments.splice(pos, 0, id);
+  renderGrid(); touch(p);
+  document.querySelectorAll('#seq .row[data-row="' + id + '"]').forEach(r => expand(r));
+  audio(); hit(id, ctx.currentTime + 0.01, volOf(p, id));
+}
+$('#addInst').addEventListener('click', () => {
+  const p = state.editing, menu = $('#instMenu'), btn = $('#addInst');
   const rest = ORDER.filter(id => !p.instruments.includes(id));
-  openSheet('追加する楽器', rest.map(id => ({abbr:INSTRUMENTS[id].label, label:INSTRUMENTS[id].name, run:() => {
-    p.tracks[id] = Array(stepsOf(p)).fill(0);
-    (p.volumes = p.volumes || {})[id] = 1;
-    // 定義順（上から金物→タム→スネア→キック）の位置に差し込む
-    const pos = p.instruments.findIndex(x => ORDER.indexOf(x) > ORDER.indexOf(id));
-    pos < 0 ? p.instruments.push(id) : p.instruments.splice(pos, 0, id);
-    renderGrid(); touch(p);
-    document.querySelectorAll('#seq .row[data-row="' + id + '"]').forEach(r => expand(r));
-    audio(); hit(id, ctx.currentTime + 0.01, volOf(p, id));
-  }})));
+  menu.innerHTML = rest.map(id => '<button class="menu-opt" role="menuitem" data-inst="' + id + '"><span class="abbr">' +
+    INSTRUMENTS[id].label + '</span><span>' + INSTRUMENTS[id].name + '</span></button>').join('');
+  const run = openFloat(menu, [{opacity:0, transform:'translateY(-8px)'}, {opacity:1, transform:'none'}]);
+  const r = btn.getBoundingClientRect(), w = menu.offsetWidth, top = r.bottom + 6;
+  menu.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+  menu.style.top = top + 'px';
+  menu.style.maxHeight = (innerHeight - top - 12) + 'px';
+  menu.scrollTop = 0;
+  run();
+  const first = menu.querySelector('.menu-opt'); if (first) first.focus({preventScroll:true});
+});
+$('#instMenu').addEventListener('click', e => {
+  const b = e.target.closest('.menu-opt'); if (!b) return;
+  closeFloat(); addInstrument(b.dataset.inst);
 });
 
 /* 小節の増減 */

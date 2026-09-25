@@ -131,7 +131,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .cell.on::before{background:var(--fill)}
 .cell.on.v1::before{background:var(--soft)}
 .cell.on.v3::before{background:var(--line)}
-.cell.now::before{background:var(--now)}
+.cell.now::before{background:var(--now);transition:none}
 .cell.on.now::before{background:var(--ink);border-color:var(--ink)}
 
 .section{margin-top:22px}
@@ -694,16 +694,28 @@ function hit(id, t, vol){
 }
 
 /* ===== 再生 ===== */
-const player = { p:null, step:0, beatT:0, timer:null, uiTimers:[] };
+const player = { p:null, step:0, beatT:0, timer:null, marks:[], raf:0 };
 const isPlaying = p => !!(player.p && p && player.p.id === p.id);
 function play(p){
   audio(); stop(true);
   player.p = p; player.step = 0; player.beatT = ctx.currentTime + 0.06;
   player.timer = setInterval(tick, 25); tick(); refreshPlayState();
+  player.raf = requestAnimationFrame(drawStep);
+}
+/* 光るマスは、実際にスピーカーから音が出る時刻に合わせる
+   （端末やイヤホンによる出力の遅れ＝outputLatency などを足す） */
+function audibleTime(){ return ctx.currentTime - (ctx.outputLatency || 0) - (ctx.baseLatency || 0); }
+function drawStep(){
+  if (!player.p) return;
+  const now = audibleTime(), m = player.marks;
+  let cur = null;
+  while (m.length && m[0].t <= now){ cur = m.shift(); }
+  if (cur && cur.s !== shown) showStep(cur.s);
+  player.raf = requestAnimationFrame(drawStep);
 }
 function stop(silent){
   clearInterval(player.timer); player.timer = null;
-  player.uiTimers.forEach(clearTimeout); player.uiTimers = [];
+  cancelAnimationFrame(player.raf); player.marks = [];
   player.p = null; showStep(-1);
   if (!silent) refreshPlayState();
 }
@@ -723,8 +735,8 @@ function tick(){
         const late = div === 4 && k % 2 && !isSwingOff(p, i) ? swingOf(p, i) * beatDur / 12 : 0;
         hit(i, t + late, volOf(p, i) * VEL[v]);
       });
-      player.uiTimers.push(setTimeout(() => showStep(s), Math.max(0, (t - ctx.currentTime) * 1000)));
-      if (player.uiTimers.length > 64) player.uiTimers.splice(0, 32);
+      player.marks.push({t, s});
+      if (player.marks.length > 256) player.marks.splice(0, 128);   // 画面が隠れている間にたまりすぎないように
     }
     player.step = s + 1;
     if (player.step % 4 === 0) player.beatT += beatDur;

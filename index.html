@@ -105,7 +105,6 @@ button{cursor:pointer;background:none;border:0;padding:0}
 
 .seq{--cw:40;--bh:33;--bw:1.5px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;padding:4px 0}
 .measure + .measure{margin-top:10px;padding-top:2px;border-top:2px solid var(--line)}
-.measure-cap{font-size:12px;line-height:16px;color:var(--sub);padding:4px 0 2px 42px}
 .row{display:grid;grid-template-columns:38px repeat(4,calc(var(--cw) * 4px + 5px));grid-template-rows:calc(var(--bh) * 1px + 6px);align-items:stretch}
 .lab{font-size:13px;line-height:1;font-weight:600;text-align:right;padding-right:6px;display:flex;align-items:center;justify-content:flex-end}
 .lab{touch-action:none;cursor:grab}
@@ -771,7 +770,7 @@ function renderGrid(){
   const p = state.editing;
   let html = '';
   for (let b=0; b<p.bars; b++){
-    html += '<div class="measure" data-bar="' + b + '">' + (p.bars > 1 ? '<div class="measure-cap">' + (b+1) + '小節目</div>' : '');
+    html += '<div class="measure" data-bar="' + b + '">';
     html += '<div class="ruler"><span></span>';
     for (let g=0; g<4; g++){
       const t3 = divOf(p, b*4 + g) === 3;

@@ -159,6 +159,8 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .pop-fader{display:flex;align-items:center;gap:4px;padding-right:10px;margin-left:-10px}
 .pop-fader .fader-btn{width:36px;height:36px;display:grid;place-items:center;border-radius:50%;color:var(--ink);flex:none}
 .pop-fader .fader-btn:active{background:var(--field)}
+#swingBtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;line-height:1}
+#swingBtn span{font-size:10px;font-weight:600;font-variant-numeric:tabular-nums}
 .pop-fader input{flex:1;min-width:0;height:28px;margin:0;accent-color:var(--ink)}
 .pop-fader output{width:28px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:var(--sub)}
 .pop-fader.off .fader-btn{color:var(--sub)}
@@ -330,7 +332,7 @@ const displayName = p => p.name || '無題のパターン';
 const volOf = (p, id) => p.volumes && p.volumes[id] != null ? p.volumes[id] : 1;
 const swingOf = (p, id) => p.swings && p.swings[id] != null ? p.swings[id] : 0;   // 0（イーブン）〜1（完全なシャッフル）
 const isMuted = (p, id) => !!(p.muted && p.muted[id]);
-const isSwingOff = (p, id) => !!(p.swingOff && p.swingOff[id]);
+const swingUnit = (p, id) => p.swing8 && p.swing8[id] ? 8 : 16;   // どの音符の裏を遅らせるか（16分 or 8分）
 // マスの値：0＝なし、1＝小、2＝中、3＝大
 const VEL = {1:0.45, 2:1, 3:1.4}, VEL_DEFAULT = 2, VEL_NAME = {1:'小', 2:'中', 3:'大'};
 const DATA_VER = 2;
@@ -345,14 +347,14 @@ function newPattern(){
   const volumes = {};
   DEFAULT_INST.forEach(i => volumes[i] = 1);
   return {id:uid(), v:DATA_VER, name:'', bpm:120, tags:[], bars:1, divs:Array(4).fill(4), instruments:[...DEFAULT_INST], tracks, volumes,
-    swings:{}, muted:{}, swingOff:{}, updatedAt:Date.now()};
+    swings:{}, muted:{}, swing8:{}, updatedAt:Date.now()};
 }
 function normalize(p){
   const bars = Math.max(1, Math.min(MAX_BARS, Math.round(p.bars || (p.steps ? p.steps / BAR : 1)) || 1));
   let inst = Array.isArray(p.instruments) ? p.instruments.filter(i => INSTRUMENTS[i]) : [];
   if (!inst.length) inst = [...DEFAULT_INST];
   inst = [...new Set(inst)];
-  const tracks = {}, volumes = {}, swings = {}, muted = {}, swingOff = {};
+  const tracks = {}, volumes = {}, swings = {}, muted = {}, swing8 = {};
   const unit = (o, i, d) => { const v = Number(o && o[i]); return o && o[i] != null && isFinite(v) ? Math.max(0, Math.min(1, v)) : d; };
   const legacy = !(p.v >= 2);   // 旧データは打ち込み＝1（強弱なし）なので「中」として読む
   inst.forEach(i => {
@@ -361,11 +363,12 @@ function normalize(p){
     volumes[i] = unit(p.volumes, i, 1);
     swings[i] = unit(p.swings, i, 0);
     if (p.muted && p.muted[i]) muted[i] = true;
-    if (p.swingOff && p.swingOff[i]) swingOff[i] = true;
+    if (p.swingOff && p.swingOff[i]) swings[i] = 0;   // 旧データの「スウィングオフ」は率0として読む
+    if (p.swing8 && p.swing8[i]) swing8[i] = true;
   });
   return {id:p.id || uid(), v:DATA_VER, name:p.name || '', bpm:clampBpm(p.bpm), tags:Array.isArray(p.tags) ? p.tags.map(String) : [],
     bars, divs:Array.from({length:bars*4}, (_, b) => p.divs && p.divs[b] === 3 ? 3 : 4),
-    instruments:inst, tracks, volumes, swings, muted, swingOff, updatedAt:p.updatedAt || Date.now()};
+    instruments:inst, tracks, volumes, swings, muted, swing8, updatedAt:p.updatedAt || Date.now()};
 }
 
 /* ===== 保存 ===== */
@@ -693,6 +696,18 @@ function hit(id, t, vol){
   try{ pre[id] && pre[id].length ? playPre(id, t) : VOICES[id](t); } finally{ bus = master; }
 }
 
+/* スウィング：拍の中の k 番目の16分（0〜3）を、拍の長さに対してどれだけ遅らせるか。
+   16分：裏の16分（1・3）を遅らせる。100%で 2:1 の三連符
+   8分 ：裏の8分（2）を拍の 1/2 → 2/3 へ。間の16分（1・3）も前半・後半の伸び縮みに合わせて動かす */
+function swingLate(k, sw, unit){
+  if (!sw) return 0;
+  const x = k / 4;
+  if (unit === 16) return k % 2 ? sw / 12 : 0;
+  const mid = 0.5 + sw / 6;
+  const y = x < 0.5 ? x * mid / 0.5 : mid + (x - 0.5) * (1 - mid) / 0.5;
+  return y - x;
+}
+
 /* ===== 再生 ===== */
 const player = { p:null, step:0, beatT:0, timer:null, marks:[], raf:0 };
 const isPlaying = p => !!(player.p && p && player.p.id === p.id);
@@ -731,8 +746,7 @@ function tick(){
       p.instruments.forEach(i => {
         const v = p.tracks[i][s];
         if (!v || isMuted(p, i)) return;
-        // 裏の16分を遅らせる。100%で 2:1 の三連符（16分の1/3だけ後ろ）。三連符の拍にはかけない
-        const late = div === 4 && k % 2 && !isSwingOff(p, i) ? swingOf(p, i) * beatDur / 12 : 0;
+        const late = div === 4 ? swingLate(k, swingOf(p, i), swingUnit(p, i)) * beatDur : 0;   // 三連符の拍にはかけない
         hit(i, t + late, volOf(p, i) * VEL[v]);
       });
       player.marks.push({t, s});
@@ -1169,7 +1183,7 @@ $('#seq').addEventListener('pointercancel', e => endDrag(e, true));
 /* 楽器名タップ：音量フェーダーと削除のポップアップ */
 const ICON_MUTE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>';
 const ICON_SWING = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17V5l10-1.5V15.5" stroke-width="1.6"/><path d="M8 5l10-1.5v2.5L8 7.5z" fill="currentColor"/><ellipse cx="6" cy="17.5" rx="2.4" ry="1.8" fill="currentColor"/><ellipse cx="16" cy="16" rx="2.4" ry="1.8" fill="currentColor"/></svg>';
-const ICON_SWING_OFF = ICON_SWING.replace('</svg>', '<path d="M3 21 21 3" stroke-width="2"/></svg>');
+
 const ICON_VOL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
 /* ポップアップ・メニューは同時に1つだけ。開閉が重なっても表示が崩れないよう世代で管理する */
 let floatEl = null, floatGen = 0;
@@ -1218,15 +1232,13 @@ function instrumentMenu(id, lab){
   };
   $('#instVol').onchange = () => { if (!isPlaying(p) && !isMuted(p, id)){ audio(); hit(id, ctx.currentTime + 0.01, volOf(p, id)); } };
   const syncToggles = () => {
-    const m = isMuted(p, id), so = isSwingOff(p, id);
+    const m = isMuted(p, id), su = swingUnit(p, id);
     $('#volRow').classList.toggle('off', m);
     $('#muteBtn').innerHTML = m ? ICON_MUTE : ICON_VOL;
     $('#muteBtn').setAttribute('aria-label', m ? 'ミュートを解除' : 'ミュート');
     $('#muteBtn').setAttribute('aria-pressed', m);
-    $('#swingRow').classList.toggle('off', so);
-    $('#swingBtn').innerHTML = so ? ICON_SWING_OFF : ICON_SWING;
-    $('#swingBtn').setAttribute('aria-label', so ? 'スウィングをオン' : 'スウィングをオフ');
-    $('#swingBtn').setAttribute('aria-pressed', so);
+    $('#swingBtn').innerHTML = ICON_SWING.replace(/width="18" height="18"/, 'width="13" height="13"') + '<span>' + su + '</span>';
+    $('#swingBtn').setAttribute('aria-label', su + '分のスウィング（タップで' + (su === 16 ? 8 : 16) + '分に切り替え）');
     document.querySelectorAll('#seq .lab[data-inst="' + id + '"]').forEach(l => l.classList.toggle('muted', m));
   };
   syncToggles();
@@ -1236,9 +1248,10 @@ function instrumentMenu(id, lab){
     syncToggles(); touch(p);
   };
   $('#swingBtn').onclick = () => {
-    p.swingOff = p.swingOff || {};
-    if (p.swingOff[id]) delete p.swingOff[id]; else p.swingOff[id] = true;
+    p.swing8 = p.swing8 || {};
+    if (p.swing8[id]) delete p.swing8[id]; else p.swing8[id] = true;
     syncToggles(); touch(p);
+    anim($('#swingBtn'), [{transform:'scale(.85)'}, {transform:'none'}], {duration:220}).then(a => a && a.cancel());
   };
   $('#instSwing').oninput = e => {
     const v = +e.target.value;
@@ -1251,7 +1264,7 @@ function instrumentMenu(id, lab){
     if (p.tracks[id].some(v => v) && !(await ask(ins.name + 'の打ち込みも消えます。外しますか？', '外す'))) return;
     await Promise.all([...document.querySelectorAll('#seq .row[data-row="' + id + '"]')].map(r => collapse(r)));
     p.instruments.splice(p.instruments.indexOf(id), 1);
-    [p.tracks, p.volumes, p.swings, p.muted, p.swingOff].forEach(o => { if (o) delete o[id]; });
+    [p.tracks, p.volumes, p.swings, p.muted, p.swing8].forEach(o => { if (o) delete o[id]; });
     renderGrid(); touch(p);
   };
 }

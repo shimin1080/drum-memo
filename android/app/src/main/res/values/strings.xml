@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Drum memo</string>
+    <string name="title_activity_main">Drum memo</string>
+    <string name="package_name">jp.shimin.drummemo</string>
+    <string name="custom_url_scheme">jp.shimin.drummemo</string>
+</resources>

@@ -1,0 +1,17 @@
+{
+  "appId": "jp.shimin.drummemo",
+  "appName": "Drum memo",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#FFFFFF"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "launchFadeOutDuration": 0,
+      "backgroundColor": "#FFFFFF",
+      "showSpinner": false
+    }
+  }
+}

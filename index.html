@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Drum memo</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -34,7 +34,10 @@
   --line:#CFCFCF; --soft:#3A3A3A; --fill:#6A6A6A; --now:#333333; --danger:#FF6B61;
 }
 *,*::before,*::after{box-sizing:inherit}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);touch-action:manipulation}   /* ダブルタップで拡大しない */
+/* 長押しで文字が選択されたり、メニューが出たりしないように（入力欄は選べるまま） */
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 body{
   margin:0;background:var(--bg);color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif;
@@ -84,10 +87,19 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .btn-primary{width:100%;height:48px;border-radius:10px;background:var(--ink);color:var(--bg);font-weight:600}
 
 /* ---------- 編集 ---------- */
-.tbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--hair)}
-.tbar-in{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding-top:6px;padding-bottom:6px}
-.tbar .icon-btn{margin:0 -6px}
-.tbar .icon-btn.danger{color:var(--danger);margin-left:auto}
+.tbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--hair);
+  overflow:hidden;transition:height .32s cubic-bezier(.22,1,.36,1)}
+/* 再生・BPM・BAR・楽器をひとかたまりで画面の中央に。戻るは左端、しまうボタンは右端 */
+.tbar-in{display:flex;justify-content:center;align-items:center;gap:14px;padding:6px 44px;
+  transition:opacity .22s ease,visibility 0s}
+.tbar .icon-btn{margin:0}
+#backBtn{position:absolute;left:4px;top:0;bottom:0;margin:auto 0}
+/* 上部バーをしまう小さな丸（しまうと丸だけが残る） */
+.bar-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:32px;display:grid;place-items:center}
+.bar-toggle span{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--sub);transition:background-color .2s ease}
+.tbar.collapsed{height:26px}
+.tbar.collapsed .tbar-in{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease,visibility 0s linear .15s}
+.tbar.collapsed .bar-toggle span{background:var(--sub)}
 .play-lg{width:44px;height:44px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}
 .stepper{display:flex;align-items:center;gap:2px}
 .stepper button{width:34px;height:34px;border-radius:8px;background:var(--field);font-size:19px;line-height:1}
@@ -100,14 +112,15 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .tbtn:disabled{opacity:.35}
 #addInst{width:34px;padding:0;justify-content:center}
 
-.name{width:100%;border:0;background:none;outline:none;font-size:18px;font-weight:600;padding:12px 0 6px;border-bottom:1px solid var(--hair);margin-bottom:8px}
+.name-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--hair);margin-bottom:8px}
+.name{flex:1 1 40%;min-width:0;border:0;background:none;outline:none;font-size:18px;font-weight:600;padding:12px 0 8px}
 .name::placeholder{color:var(--sub);font-weight:400}
 
 .seq{--cw:40;--bh:33;--bw:1.5px;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;padding:4px 0}
 .measure + .measure{margin-top:10px;padding-top:2px;border-top:2px solid var(--line)}
 .row{display:grid;grid-template-columns:38px repeat(4,calc(var(--cw) * 4px + 5px));grid-template-rows:calc(var(--bh) * 1px + 6px);align-items:stretch}
 .lab{font-size:13px;line-height:1;font-weight:600;text-align:right;padding-right:6px;display:flex;align-items:center;justify-content:flex-end}
-.lab{touch-action:none;cursor:grab}
+.lab{touch-action:pan-y;cursor:grab}
 .lab:active{color:var(--sub)}
 .lab.muted{color:var(--sub);text-decoration:line-through}
 .row.shifting{transition:transform .2s cubic-bezier(.22,1,.36,1)}
@@ -134,18 +147,22 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .cell.now::before{background:var(--now);transition:none}
 .cell.on.now::before{background:var(--ink);border-color:var(--ink)}
 
-.section{margin-top:22px}
-.section h2{font-size:13px;font-weight:400;color:var(--sub);margin:0 0 6px}
-.tagbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-bottom:1px solid var(--hair);padding:4px 0 8px}
+#editView > .wrap{padding-bottom:48px}
+/* タグはパターン名の右に右寄せで並べ、「+」を押すと入力欄が広がる */
+.tagbox{position:relative;flex:0 1 auto;max-width:62%;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;align-items:center;padding:6px 0}
 .tag{display:flex;align-items:center;background:var(--field);border-radius:6px;padding:1px 2px 1px 8px;font-size:14px}
 .tag button{width:26px;height:26px;color:var(--sub)}
-.tagbox input{flex:1;min-width:120px;border:0;background:none;outline:none;padding:4px 0;font-size:16px}
+.tag-add{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:24px;line-height:1;color:var(--sub);
+  transition:background-color .2s ease,color .2s ease}
+.tag-add:active,.tag-add[aria-expanded="true"]{background:var(--field);color:var(--ink)}
+.tag-entry{padding:2px 0 6px}
+.tag-entry input{width:100%;border:0;outline:none;background:var(--field);border-radius:8px;padding:8px 12px;font-size:16px}
+.tag-entry input::placeholder{color:var(--sub)}
 .tag-suggest{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
 .tag-suggest::-webkit-scrollbar{display:none}
 .sug{flex:none;border:1px solid var(--hair);border-radius:6px;padding:3px 10px;font-size:14px;color:var(--ink);transition:background-color .2s ease}
 .sug:active{background:var(--field)}
 .sug b{font-weight:600}
-.section:last-child{margin-bottom:48px}
 
 /* ---------- 楽器ポップアップ ---------- */
 .pop-shade{position:fixed;inset:0;z-index:18}
@@ -153,7 +170,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
   border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:4px 4px 10px 14px}
 .pop-head{display:flex;align-items:center;gap:8px}
 .pop-abbr{font-weight:600;font-size:14px}
-.pop-name{flex:1;min-width:0;font-size:14px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pop-head .icon-btn{margin-left:auto}
 .inst-pop .icon-btn{color:var(--danger)}
 .inst-pop .icon-btn:disabled{opacity:.35}
 .pop-fader{display:flex;align-items:center;gap:4px;padding-right:10px;margin-left:-10px}
@@ -178,11 +195,10 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .vel-pop button[data-v="3"] i{background:var(--line)}
 
 /* ---------- 楽器追加メニュー ---------- */
-.inst-menu{position:fixed;z-index:19;width:220px;background:var(--bg);border:1px solid var(--hair);border-radius:12px;
+.inst-menu{position:fixed;z-index:19;width:96px;background:var(--bg);border:1px solid var(--hair);border-radius:12px;
   box-shadow:0 8px 28px rgba(0,0,0,.18);padding:4px 0;overflow-y:auto;overscroll-behavior:contain}
-.menu-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 16px;font-size:15px;transition:background-color .2s ease}
+.menu-opt{display:block;width:100%;text-align:center;padding:11px 0;font-size:15px;font-weight:600;transition:background-color .2s ease}
 .menu-opt:active{background:var(--field)}
-.menu-opt .abbr{width:26px;font-weight:600;font-size:13px}
 
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}
 .dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:22;width:min(300px,calc(100% - 48px));
@@ -194,9 +210,8 @@ button{cursor:pointer;background:none;border:0;padding:0}
 
 /* 縦画面：ツールバーを1行に詰める */
 @media (max-width:560px){
-  .tbar-in{flex-wrap:nowrap;gap:4px;justify-content:space-between;padding-left:8px;padding-right:8px}
-  .tbar .icon-btn{margin:0;width:32px;height:40px}
-  .tbar .icon-btn.danger{margin-left:0}
+  .tbar-in{gap:10px;padding-left:40px;padding-right:34px}
+  .tbar .icon-btn{width:30px;height:40px}
   .play-lg{width:38px;height:38px}
   .stepper{gap:1px}
   .stepper button{width:27px;height:32px;font-size:17px;border-radius:7px}
@@ -227,11 +242,23 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
   background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;z-index:30}
 @media (prefers-reduced-motion:reduce){.cell::before{transition:none}}
+
+/* ---------- 起動アニメーション（アプリ版のみ） ----------
+   起動画面の画像（白地に 4×4 のマス）と同じ位置・大きさで重ね、そこから動かす */
+#intro{display:none}
+.is-app #intro{display:grid;place-items:center;position:fixed;inset:0;z-index:50;background:#fff}
+.intro-grid{--g:calc(max(100vw, 100vh) * 172 / 1366);position:relative;width:var(--g);height:var(--g)}
+.intro-grid i{position:absolute;width:19.34%;height:19.34%;box-sizing:border-box;background:#fff;
+  border:calc(var(--g) * 0.0164) solid #333;border-radius:calc(var(--g) * 0.036)}
+.intro-grid i.on{background:#A0A0A0}
 </style>
 </head>
 <body>
+<div id="intro" aria-hidden="true"><div class="intro-grid"><i data-c="0" style="left:0.00%;top:0.00%"></i><i data-c="1" class="on" style="left:27.05%;top:0.00%"></i><i data-c="2" style="left:54.10%;top:0.00%"></i><i data-c="3" style="left:81.15%;top:0.00%"></i><i data-c="0" class="on" style="left:0.00%;top:27.05%"></i><i data-c="1" style="left:27.05%;top:27.05%"></i><i data-c="2" class="on" style="left:54.10%;top:27.05%"></i><i data-c="3" class="on" style="left:81.15%;top:27.05%"></i><i data-c="0" style="left:0.00%;top:54.10%"></i><i data-c="1" class="on" style="left:27.05%;top:54.10%"></i><i data-c="2" style="left:54.10%;top:54.10%"></i><i data-c="3" class="on" style="left:81.15%;top:54.10%"></i><i data-c="0" class="on" style="left:0.00%;top:81.15%"></i><i data-c="1" style="left:27.05%;top:81.15%"></i><i data-c="2" class="on" style="left:54.10%;top:81.15%"></i><i data-c="3" style="left:81.15%;top:81.15%"></i></div></div>
 
 <main id="listView">
+  <!-- 画面切り替えで横にずらすのはこの中身だけ（下のボタンは固定位置のまま、薄くなるだけ） -->
+  <div class="lv-body">
   <div class="top" hidden>
     <div class="wrap">
       <label class="search">
@@ -246,12 +273,13 @@ button{cursor:pointer;background:none;border:0;padding:0}
     <ul class="list" id="list"></ul>
     <div class="empty" id="empty" hidden></div>
   </div>
+  </div>
   <div class="dock"><div class="wrap"><button class="btn-primary" id="newBtn">新しいパターン</button></div></div>
 </main>
 
 <main id="editView" hidden>
-  <div class="tbar">
-    <div class="wrap wide tbar-in">
+  <div class="tbar" id="tbar">
+    <div class="wrap wide tbar-in" id="tbarIn">
       <button class="icon-btn" id="backBtn" aria-label="一覧に戻る">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
       </button>
@@ -263,25 +291,28 @@ button{cursor:pointer;background:none;border:0;padding:0}
       </div>
       <div class="stepper">
         <button id="barDown" aria-label="小節を減らす">−</button>
-        <span class="val"><output id="barCount">1</output><span>小節</span></span>
+        <span class="val"><output id="barCount">1</output><span>BAR</span></span>
         <button id="barUp" aria-label="小節を増やす">＋</button>
       </div>
       <button class="tbtn" id="addInst" aria-label="楽器を追加">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="11" rx="8" ry="3"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6M8 13.8v6M16 13.8v6M5 3l6 7M19 3l-6 7"/></svg>
       </button>
-      <button class="icon-btn danger" id="delBtn" aria-label="このパターンを削除"></button>
     </div>
+    <button class="bar-toggle" id="barToggle" aria-label="上部バーをしまう" aria-expanded="true"><span></span></button>
   </div>
   <div class="wrap wide">
-    <input class="name" id="name" aria-label="パターン名" placeholder="パターン名" maxlength="60">
-    <div class="seq" id="seq"></div>
-    <div class="section">
-      <h2>タグ</h2>
+    <div class="name-row">
+      <input class="name" id="name" aria-label="パターン名" placeholder="パターン名" maxlength="60">
       <div class="tagbox" id="tagbox">
-        <input id="tagInput" placeholder="タグを追加" aria-label="タグを追加" enterkeyhint="done" autocomplete="off" aria-controls="tagSuggest">
+        <button class="tag-add" id="tagAdd" aria-label="タグを追加" aria-expanded="false" aria-controls="tagEntry">+</button>
       </div>
-      <div class="tag-suggest" id="tagSuggest" role="listbox" aria-label="登録済みのタグ" hidden></div>
     </div>
+    <!-- 「+」を押すと、この入力欄が名前の行の下に開く（「+」自体は動かない） -->
+    <div class="tag-entry" id="tagEntry" hidden>
+      <input id="tagInput" placeholder="タグを入力" aria-label="タグを追加" enterkeyhint="done" autocomplete="off" aria-controls="tagSuggest">
+    </div>
+    <div class="tag-suggest" id="tagSuggest" role="listbox" aria-label="登録済みのタグ" hidden></div>
+    <div class="seq" id="seq"></div>
   </div>
 </main>
 
@@ -443,8 +474,18 @@ function silentWavUrl(){
   let bin = ''; new Uint8Array(buf).forEach(b => bin += String.fromCharCode(b));
   return 'data:audio/wav;base64,' + btoa(bin);
 }
+/* iPhone アプリとして動いているか（アプリ版は音の扱いをアプリ本体側で設定済み） */
+const IS_APP = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+const splash = () => window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SplashScreen;
+if (IS_APP){
+  document.documentElement.classList.add('is-app');   // 起動アニメーション用の絵を出す（起動画面の裏で）
+  // 念のため：何かあっても起動画面が出たままにならないよう、4秒で必ず閉じる
+  setTimeout(() => { try{ splash().hide({fadeOutDuration:200}); }catch(e){} }, 4000);
+}
 function unmute(){
+  // 「再生用の音」として扱ってもらう（消音スイッチがオンでも鳴り、アプリ版は裏に回っても鳴り続ける）
   try{ if (navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}
+  if (IS_APP) return;   // アプリ版はバックグラウンド再生の許可があるので、無音の <audio> は使わない
   if (!unmuteEl){
     unmuteEl = document.createElement('audio');
     unmuteEl.src = silentWavUrl(); unmuteEl.loop = true;
@@ -461,10 +502,9 @@ document.addEventListener('visibilitychange', () => {
 function audio(){
   unmute();
   ensureCtx();
-  if (ctx.state === 'suspended') ctx.resume();
+  if (ctx.state !== 'running') ctx.resume();   // 電話などで止められた（interrupted）あとも戻す
   return ctx;
 }
-/* 音の準備だけ先にしておく（起動時に呼び、ライド・クラッシュ・リムの音をあらかじめ作り始める） */
 function ensureCtx(){
   if (!ctx){
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -473,14 +513,30 @@ function ensureCtx(){
     const d = noiseBuf.getChannelData(0);
     for (let i=0;i<len;i++) d[i] = Math.random()*2-1;
     master = ctx.createDynamicsCompressor(); master.connect(ctx.destination); bus = master;
-    prerender();
   }
 }
 function env(t, peak, dur, dest){
   const g = ctx.createGain();
   g.gain.setValueAtTime(peak, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  g.env = {t, peak, dur};   // 途中で止めるとき（ハイハットのチョーク）に、その時点の音量を求めるため
   g.connect(dest || bus); return g;
+}
+/* 鳴っているオープンハイハットを、時刻 t の音量のまますっと止める。
+   以前は予定を取り消して音量が最大に戻ってから止めていたため、先の音を多めに予約する
+   バックグラウンド再生で「ブワッ」と変な音になっていた */
+function chokeOpenHat(t){
+  const g = openHat; openHat = null;
+  if (!g) return;
+  const p = g.gain, e = g.env;
+  if (e && t >= e.t + e.dur) return;   // もう鳴り終わっている
+  if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(t);
+  else {
+    p.cancelScheduledValues(t);
+    const x = e ? Math.max(0, (t - e.t) / e.dur) : 0;
+    p.setValueAtTime(e ? e.peak * Math.pow(0.001 / e.peak, x) : 0.001, t);
+  }
+  p.setTargetAtTime(0.0001, t, 0.01);
 }
 function noise(t, dur){ const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.start(t); s.stop(t + dur + 0.02); return s; }
 function filt(type, f, q){ const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; }
@@ -496,10 +552,10 @@ const VOICES = {
   bd(t){ osc('sine', t, 150, 42, 0.12, 0.45, env(t, 1, 0.42)); },
   sd(t){ const hp = filt('highpass', 1300); noise(t, 0.2).connect(hp); hp.connect(env(t, 0.6, 0.2)); osc('triangle', t, 200, 150, 0.08, 0.12, env(t, 0.5, 0.11)); },
   ch(t){
-    if (openHat){ openHat.gain.cancelScheduledValues(t); openHat.gain.setTargetAtTime(0.0001, t, 0.01); openHat = null; }
+    chokeOpenHat(t);
     hat(t, 0.28, 0.05);
   },
-  oh(t){ openHat = hat(t, 0.25, 0.38); },
+  oh(t){ chokeOpenHat(t); openHat = hat(t, 0.25, 0.38); },
   ht(t){ tom(t, 200); }, mt(t){ tom(t, 150); }, lt(t){ tom(t, 105); },
   cp(t){
     const bp = filt('bandpass', 1100, 0.8); const out = ctx.createGain(); out.connect(bus); bp.connect(out);
@@ -657,11 +713,14 @@ const PRE_KINDS = {
   rs:{fn:'renderRim909', data:'rim', peak:0.7, n:4, opt:{}},
 };
 const pre = {cr:[], rd:[], rs:[]}, preTurn = {cr:0, rd:0, rs:0};
+/* 音の出口（AudioContext）を作る前に作っておけるよう、決まったサンプリング周波数で作る。
+   再生するときに端末の周波数へ自動で変換される */
+const PRE_SR = 48000;
 function prerender(){
-  const sr = ctx.sampleRate, jobs = [];
+  const sr = PRE_SR, jobs = [];
   // 最初の一打に間に合うよう、各楽器の1種類目から順に作る
   for (let v = 0; v < 4; v++) Object.entries(PRE_KINDS).forEach(([id, k]) => { if (v < k.n) jobs.push({id, fn:k.fn, model:DATA909[k.data], peak:k.peak, opt:k.opt, seed:id.charCodeAt(0) * 7919 + v * 104729}); });
-  const done = (id, data) => { const b = ctx.createBuffer(1, data.length, sr); b.getChannelData(0).set(data); pre[id].push(b); };
+  const done = (id, data) => pre[id].push({data, buf:null});
   // Worker が使えない環境では、少しずつ間をあけて本体で作る
   const local = () => {
     Object.keys(pre).forEach(id => pre[id] = []);
@@ -684,8 +743,9 @@ function prerender(){
 }
 const RENDER = {renderCymbal, renderRim909};
 function playPre(id, t){
-  const list = pre[id], buf = list[preTurn[id]++ % list.length];
-  const src = ctx.createBufferSource(); src.buffer = buf; src.connect(bus); src.start(t);
+  const list = pre[id], item = list[preTurn[id]++ % list.length];
+  if (!item.buf){ item.buf = ctx.createBuffer(1, item.data.length, PRE_SR); item.buf.getChannelData(0).set(item.data); }
+  const src = ctx.createBufferSource(); src.buffer = item.buf; src.connect(bus); src.start(t);
 }
 
 /* 楽器ごとの音量をかけて鳴らす（各音色は bus に出力する） */
@@ -711,25 +771,43 @@ function swingLate(k, sw, unit){
 /* ===== 再生 ===== */
 const player = { p:null, step:0, beatT:0, timer:null, marks:[], raf:0 };
 const isPlaying = p => !!(player.p && p && player.p.id === p.id);
+/* 刻みの時計。画面の外（別スレッド）で回すので、アプリが裏に回っても間引かれにくい */
+const clock = (() => {
+  try{
+    const w = new Worker(URL.createObjectURL(new Blob(['let t = null; onmessage = e => { clearInterval(t); t = e.data ? setInterval(() => postMessage(0), e.data) : null; };'], {type:'text/javascript'})));
+    return {start(ms, fn){ w.onmessage = fn; w.postMessage(ms); }, stop(){ w.postMessage(0); w.onmessage = null; }};
+  }catch(e){
+    let t = null;
+    return {start(ms, fn){ clearInterval(t); t = setInterval(fn, ms); }, stop(){ clearInterval(t); t = null; }};
+  }
+})();
 function play(p){
   audio(); stop(true);
   player.p = p; player.step = 0; player.beatT = ctx.currentTime + 0.06;
-  player.timer = setInterval(tick, 25); tick(); refreshPlayState();
+  player.timer = true; clock.start(25, tick); tick(); refreshPlayState();
   player.raf = requestAnimationFrame(drawStep);
 }
 /* 光るマスは、実際にスピーカーから音が出る時刻に合わせる
    （端末やイヤホンによる出力の遅れ＝outputLatency などを足す） */
-function audibleTime(){ return ctx.currentTime - (ctx.outputLatency || 0) - (ctx.baseLatency || 0); }
+function audibleTime(){
+  // いまスピーカーから出ている音の位置（対応していれば端末から直接もらう）
+  const ts = ctx.getOutputTimestamp && ctx.getOutputTimestamp();
+  if (ts && ts.contextTime > 0 && ts.performanceTime > 0) return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+  return ctx.currentTime - (ctx.outputLatency || 0) - (ctx.baseLatency || 0);
+}
+/* 画面に光りが実際に映るまでの遅れ（描画〜表示で数十ms）を見込んで、少し早めに光らせる。
+   音より光が遅れると目立つが、ほんの少し早いぶんには気にならない */
+const VISUAL_LEAD = 0.05;
 function drawStep(){
   if (!player.p) return;
-  const now = audibleTime(), m = player.marks;
+  const now = audibleTime() + VISUAL_LEAD, m = player.marks;
   let cur = null;
   while (m.length && m[0].t <= now){ cur = m.shift(); }
   if (cur && cur.s !== shown) showStep(cur.s);
   player.raf = requestAnimationFrame(drawStep);
 }
 function stop(silent){
-  clearInterval(player.timer); player.timer = null;
+  clock.stop(); player.timer = null;
   cancelAnimationFrame(player.raf); player.marks = [];
   player.p = null; showStep(-1);
   if (!silent) refreshPlayState();
@@ -742,7 +820,8 @@ function tick(){
     const s = player.step, k = s % 4, div = divOf(p, s >> 2), beatDur = 60 / p.bpm;
     if (k < div){
       const t = player.beatT + k * beatDur / div;
-      if (t >= ctx.currentTime + 0.12) break;
+      // 裏に回っている間は時計が遅れがちなので、先の音を多めに予約しておく
+      if (t >= ctx.currentTime + (document.hidden ? 1.5 : 0.12)) break;
       p.instruments.forEach(i => {
         const v = p.tracks[i][s];
         if (!v || isMuted(p, i)) return;
@@ -881,7 +960,7 @@ function renderList(animate){
       '<button class="play-sm"></button>' +
       '<button class="item-open">' +
         '<span class="item-head"><span class="item-name">' + esc(displayName(p)) + '</span>' +
-        '<span class="item-meta"><span>' + p.bpm + ' BPM</span>' + (p.bars > 1 ? '<span>' + p.bars + '小節</span>' : '') + '</span></span>' +
+        '<span class="item-meta"><span>' + p.bpm + ' BPM</span></span></span>' +
         miniSvg(p) +
         (p.tags.length ? '<span class="tags">' + p.tags.map(t => '<span>#' + esc(t) + '</span>').join('') + '</span>' : '') +
       '</button>' +
@@ -935,10 +1014,13 @@ let listScroll = 0;
 async function openEditor(p, focusName){
   if (busy) return; busy = true;
   listScroll = window.scrollY;
-  await hide($('#listView'), [{opacity:1, transform:'none'}, {opacity:0, transform:'translateX(-18px)'}], {duration:150, easing:EASE_IN});
+  // 画面全体を動かすと、下の固定ボタンが一瞬ずれて見えるので、中身だけをずらす
+  const slide = anim($('#listView .lv-body'), [{transform:'none'}, {transform:'translateX(-18px)'}], {duration:150, easing:EASE_IN});
+  await hide($('#listView'), [{opacity:1}, {opacity:0}], {duration:150, easing:EASE_IN});
+  slide.then(a => a && a.cancel());
   state.editing = p;
   $('#name').value = p.name; $('#bpm').value = p.bpm;
-  renderGrid(); renderTags(); refreshPlayState();
+  renderGrid(); renderTags(); closeTagEntry(true); refreshPlayState();
   window.scrollTo(0, 0);
   await show($('#editView'), [{opacity:0, transform:'translateX(36px)'}, {opacity:1, transform:'none'}], {duration:380});
   busy = false;
@@ -952,7 +1034,9 @@ async function backToList(){
   $('#listView').hidden = false;
   window.scrollTo(0, listScroll);
   $('#listView').hidden = true;
-  await show($('#listView'), [{opacity:0, transform:'translateX(-18px)'}, {opacity:1, transform:'none'}], {duration:360});
+  const slide = anim($('#listView .lv-body'), [{transform:'translateX(-18px)'}, {transform:'none'}], {duration:360});
+  await show($('#listView'), [{opacity:0}, {opacity:1}], {duration:360});
+  slide.then(a => a && a.cancel());
   busy = false;
 }
 function discard(p){
@@ -970,7 +1054,6 @@ function closeEditor(){
 }
 
 /* ===== 編集 ===== */
-$('#delBtn').innerHTML = ICON_TRASH;
 function renderGrid(){
   const p = state.editing;
   let html = '';
@@ -1112,7 +1195,6 @@ function velocityMenu(c){
   const pop = $('#velPop'), cur = state.editing.tracks[c.dataset.i][+c.dataset.s];
   velCell = c;
   pop.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.v === cur));
-  try{ if (navigator.vibrate) navigator.vibrate(10); }catch(e){}
   const run = openFloat(pop, [{opacity:0, transform:'translateY(6px) scale(.96)'}, {opacity:1, transform:'none'}]);
   const r = c.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
   let top = r.top - h - 10;                 // 指で隠れないようマスの上に出す
@@ -1131,26 +1213,35 @@ $('#velPop').addEventListener('click', e => {
   setCell(c, v); touch(state.editing);
 });
 
-/* 楽器名を上下にドラッグして並べ替え */
-const drag = { id:null };
+/* 楽器名を長押ししてから上下に動かして並べ替え（長押し前に指が動いたらスクロール） */
+const drag = { id:null, active:false, timer:null };
 let dragEndAt = -1e9;
+const DRAG_HOLD = 350;
 $('#seq').addEventListener('pointerdown', e => {
   const lab = e.target.closest('.lab'); if (!lab || drag.id !== null) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const row = lab.closest('.row'), rows = [...row.parentNode.querySelectorAll('.row')];
   const idx = rows.indexOf(row);
-  Object.assign(drag, {id:e.pointerId, row, rows, idx, to:idx, y:e.clientY, dy:0, moved:false,
+  Object.assign(drag, {id:e.pointerId, lab, row, rows, idx, to:idx, x:e.clientX, y:e.clientY, dy:0, active:false,
     h:rows.length > 1 ? rows[1].offsetTop - rows[0].offsetTop : row.offsetHeight});
-  try{ lab.setPointerCapture(e.pointerId); }catch(err){}
+  clearTimeout(drag.timer);
+  drag.timer = setTimeout(() => {
+    if (drag.id === null) return;
+    drag.active = true;
+    drag.row.classList.add('lifted');
+    drag.rows.forEach(r => { if (r !== drag.row) r.classList.add('shifting'); });
+    try{ drag.lab.setPointerCapture(drag.id); }catch(err){}
+  }, DRAG_HOLD);
 });
+// 持ち上げている間は、画面がスクロールしないようにする
+document.addEventListener('touchmove', e => { if (drag.active) e.preventDefault(); }, {passive:false});
 $('#seq').addEventListener('pointermove', e => {
   if (e.pointerId !== drag.id) return;
   const raw = e.clientY - drag.y;
-  if (!drag.moved){
-    if (Math.abs(raw) < 6) return;
-    drag.moved = true;
-    drag.row.classList.add('lifted');
-    drag.rows.forEach(r => { if (r !== drag.row) r.classList.add('shifting'); });
+  if (!drag.active){
+    // 長押しになる前に動いた＝スクロールなので、並べ替えはやめる
+    if (Math.hypot(e.clientX - drag.x, raw) > 8){ clearTimeout(drag.timer); drag.id = null; }
+    return;
   }
   const n = drag.rows.length;
   drag.dy = Math.max(-drag.idx * drag.h, Math.min((n - 1 - drag.idx) * drag.h, raw));
@@ -1166,9 +1257,11 @@ $('#seq').addEventListener('pointermove', e => {
 });
 function endDrag(e, cancel){
   if (e.pointerId !== drag.id) return;
+  clearTimeout(drag.timer);
   drag.id = null;
-  if (!drag.moved) return;
-  dragEndAt = performance.now();
+  if (!drag.active) return;
+  drag.active = false;
+  dragEndAt = performance.now();   // 指を離したときのタップ扱い（ポップアップ）を止める
   const p = state.editing, id = drag.row.dataset.row, bar = drag.row.closest('.measure').dataset.bar;
   const to = cancel ? drag.idx : drag.to;
   if (to !== drag.idx){ const [x] = p.instruments.splice(drag.idx, 1); p.instruments.splice(to, 0, x); touch(p); }
@@ -1209,7 +1302,7 @@ function instrumentMenu(id, lab){
   const same = floatEl === pop;
   pop.setAttribute('aria-label', ins.name);
   pop.innerHTML =
-    '<div class="pop-head"><span class="pop-abbr">' + ins.label + '</span><span class="pop-name">' + ins.name + '</span>' +
+    '<div class="pop-head"><span class="pop-abbr">' + ins.label + '</span>' +
       '<button class="icon-btn" id="instDel" aria-label="' + ins.name + 'を外す"' + (p.instruments.length <= 1 ? ' disabled' : '') + '>' + ICON_TRASH + '</button></div>' +
     '<div class="pop-fader" id="volRow"><button class="fader-btn" id="muteBtn"></button>' +
       '<input type="range" id="instVol" min="0" max="100" step="1" value="' + vol + '" aria-label="' + ins.name + 'の音量">' +
@@ -1296,8 +1389,8 @@ function addInstrument(id){
 $('#addInst').addEventListener('click', () => {
   const p = state.editing, menu = $('#instMenu'), btn = $('#addInst');
   const rest = ORDER.filter(id => !p.instruments.includes(id));
-  menu.innerHTML = rest.map(id => '<button class="menu-opt" role="menuitem" data-inst="' + id + '"><span class="abbr">' +
-    INSTRUMENTS[id].label + '</span><span>' + INSTRUMENTS[id].name + '</span></button>').join('');
+  menu.innerHTML = rest.map(id => '<button class="menu-opt" role="menuitem" data-inst="' + id + '" aria-label="' + INSTRUMENTS[id].name + '">' +
+    INSTRUMENTS[id].label + '</button>').join('');
   const run = openFloat(menu, [{opacity:0, transform:'translateY(-8px)'}, {opacity:1, transform:'none'}]);
   const r = btn.getBoundingClientRect(), w = menu.offsetWidth, top = r.bottom + 6;
   menu.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
@@ -1340,35 +1433,86 @@ $('#bpmDown').addEventListener('click', () => setBpm(state.editing.bpm - 1));
 $('#bpmUp').addEventListener('click', () => setBpm(state.editing.bpm + 1));
 $('#playBtn').addEventListener('click', () => toggle(state.editing));
 $('#backBtn').addEventListener('click', closeEditor);
-$('#delBtn').addEventListener('click', async () => {
-  const p = state.editing; if (busy) return;
-  if (!(await confirmDelete(p))) return;
-  await removePattern(p);
-  backToList();
-});
+/* 上部バーをしまう／出す（状態はこの端末に覚えておく） */
+const TBAR_KEY = 'drum-memo-tbar';
+/* バー全体の高さをなめらかに変えながら、中身をふわっと出し入れする（下の画面も一緒にすっと動く） */
+function setTbar(open, animate){
+  const bar = $('#tbar'), btn = $('#barToggle');
+  btn.setAttribute('aria-expanded', open); btn.setAttribute('aria-label', open ? '上部バーをしまう' : '上部バーを出す');
+  try{ localStorage.setItem(TBAR_KEY, open ? '1' : '0'); }catch(e){}
+  if (!animate || RM.matches){ bar.style.height = ''; bar.classList.toggle('collapsed', !open); return; }
+  // 測っている間は動きを止める（途中で別の動きが始まると、しまうときに一気に縮んでしまう）
+  bar.style.transition = 'none';
+  const from = bar.getBoundingClientRect().height;
+  bar.style.height = ''; bar.classList.toggle('collapsed', !open);
+  const to = bar.getBoundingClientRect().height;   // 切り替えたあとの本来の高さ
+  bar.style.height = from + 'px'; void bar.offsetHeight;
+  bar.style.transition = '';
+  bar.style.height = to + 'px';
+  const end = e => {
+    if (e.target !== bar || e.propertyName !== 'height') return;
+    bar.removeEventListener('transitionend', end);
+    if (open) bar.style.height = '';   // 開いたあとは中身に合わせた高さに戻す
+  };
+  bar.addEventListener('transitionend', end);
+}
+$('#barToggle').addEventListener('click', () => setTbar($('#tbar').classList.contains('collapsed'), true));
+try{ if (localStorage.getItem(TBAR_KEY) === '0') setTbar(false, false); }catch(e){}
 
 /* タグ */
 function renderTags(){
-  const box = $('#tagbox'), input = $('#tagInput');
+  const box = $('#tagbox');
   box.querySelectorAll('.tag').forEach(t => t.remove());
   state.editing.tags.forEach((t, i) => {
     const el = document.createElement('span'); el.className = 'tag';
     el.innerHTML = '<span></span><button aria-label="タグを外す">×</button>';
     el.firstChild.textContent = '#' + t; el.lastChild.dataset.i = i;
-    box.insertBefore(el, input);
+    box.appendChild(el);   // 「+」の右に並べる（増えるほど「+」が左へずれる）
+  });
+}
+/* タグが増減したとき、ほかのタグと「+」を元の位置から新しい位置まですべらせる */
+const tagItems = () => [$('#tagAdd'), ...$('#tagbox').querySelectorAll('.tag')];
+function slideFrom(els, rects){
+  els.forEach(el => el.getAnimations().forEach(a => a.cancel()));   // 動いている途中なら止めてから行き先を測る
+  els.forEach((el, k) => {
+    const a = rects[k], b = el.getBoundingClientRect();
+    if (!a) return;
+    const dx = a.left - b.left, dy = a.top - b.top;
+    if (Math.abs(dx) < .5 && Math.abs(dy) < .5) return;
+    anim(el, [{transform:`translate(${dx}px,${dy}px)`}, {transform:'none'}], {duration:280}).then(a => a && a.cancel());
   });
 }
 function addTags(raw){
   const p = state.editing;
   const before = p.tags.length;
+  const rects = tagItems().map(el => el.getBoundingClientRect());
   raw.split(/[,、，]/).map(s => s.trim().replace(/^#/, '')).filter(Boolean).forEach(t => { if (!p.tags.includes(t)) p.tags.push(t); });
+  if (p.tags.length === before) return;
   renderTags(); touch(p);
+  slideFrom(tagItems(), rects);
   [...$('#tagbox').querySelectorAll('.tag')].slice(before).forEach(el =>
     anim(el, [{opacity:0, transform:'scale(.8)'}, {opacity:1, transform:'none'}], {duration:320}).then(a => a && a.cancel()));
 }
+function removeTag(el){
+  const box = $('#tagbox'), i = +el.lastChild.dataset.i;
+  const rest = tagItems().filter(x => x !== el);
+  const rects = rest.map(x => x.getBoundingClientRect());
+  const r = el.getBoundingClientRect(), br = box.getBoundingClientRect();
+  state.editing.tags.splice(i, 1); touch(state.editing);
+  // 消えるタグは今の場所に浮かせたまま薄くし、残りはすぐに詰め始める
+  Object.assign(el.style, {position:'absolute', left:(r.left - br.left) + 'px', top:(r.top - br.top) + 'px', width:r.width + 'px', pointerEvents:'none'});
+  box.querySelectorAll('.tag').forEach(t => { if (t !== el) t.lastChild.dataset.i = state.editing.tags.indexOf(t.firstChild.textContent.slice(1)); });
+  slideFrom(rest, rects);
+  anim(el, [{opacity:1, transform:'none'}, {opacity:0, transform:'scale(.8)'}], {duration:180, easing:EASE_IN}).then(() => el.remove());
+}
+/* 日本語の変換中か。iPhone では変換を確定する Enter が「変換中ではない」と届くことがあるので、自分でも覚えておく */
+let tagComposing = false, tagComposeEnd = 0;
+$('#tagInput').addEventListener('compositionstart', () => { tagComposing = true; });
+$('#tagInput').addEventListener('compositionend', () => { tagComposing = false; tagComposeEnd = performance.now(); });
 $('#tagInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.isComposing){ e.preventDefault(); if (e.target.value.trim()){ addTags(e.target.value); e.target.value = ''; } }
-  if (e.key === 'Backspace' && !e.target.value && state.editing.tags.length){ state.editing.tags.pop(); renderTags(); touch(state.editing); }
+  const imeEnter = e.isComposing || tagComposing || e.keyCode === 229 || performance.now() - tagComposeEnd < 80;
+  if (e.key === 'Enter' && imeEnter) return;   // 変換の確定だけ。タグにはしない
+  if (e.key === 'Enter'){ e.preventDefault(); if (e.target.value.trim()){ addTags(e.target.value); e.target.value = ''; } }
 });
 $('#tagInput').addEventListener('input', e => {
   if (/[,、，]/.test(e.target.value)){ addTags(e.target.value); e.target.value = ''; }
@@ -1377,6 +1521,27 @@ $('#tagInput').addEventListener('input', e => {
 $('#tagInput').addEventListener('blur', e => {
   if (e.target.value.trim()){ addTags(e.target.value); e.target.value = ''; }
   $('#tagSuggest').hidden = true;
+  closeTagEntry();
+});
+/* 「+」で入力欄を開く・閉じる */
+function openTagEntry(){
+  const box = $('#tagEntry'), input = $('#tagInput');
+  if (box.hidden){ box.hidden = false; expand(box, {duration:240}); }
+  $('#tagAdd').setAttribute('aria-expanded', true);
+  input.focus({preventScroll:true});   // タップの処理の中で呼ぶので、そのままキーボードが出る
+}
+function closeTagEntry(instant){
+  const box = $('#tagEntry');
+  $('#tagAdd').setAttribute('aria-expanded', false);
+  if (box.hidden) return;
+  if (instant){ box.hidden = true; return; }
+  collapse(box, {duration:200}).then(a => { if (document.activeElement === $('#tagInput')) return; box.hidden = true; if (a) a.cancel(); box.style.overflow = ''; });
+}
+// 押した瞬間に入力欄からフォーカスが外れて閉じ、すぐまた開く…とならないように
+$('#tagAdd').addEventListener('pointerdown', e => { if (document.activeElement === $('#tagInput')) e.preventDefault(); });
+$('#tagAdd').addEventListener('click', () => {
+  if (document.activeElement === $('#tagInput')) $('#tagInput').blur();
+  else openTagEntry();
 });
 
 /* タグの予測候補：ほかのパターンで使ったタグから、入力中の文字を含むものを出す */
@@ -1408,16 +1573,32 @@ $('#tagSuggest').addEventListener('click', e => {
 });
 $('#tagbox').addEventListener('click', e => {
   const b = e.target.closest('.tag button');
-  if (b){
-    const el = b.closest('.tag'), i = +b.dataset.i;
-    anim(el, [{opacity:1, transform:'none'}, {opacity:0, transform:'scale(.8)'}], {duration:180, easing:EASE_IN})
-      .then(() => { state.editing.tags.splice(i, 1); renderTags(); touch(state.editing); });
-  }
-  else if (e.target === e.currentTarget) $('#tagInput').focus();
+  if (b) removeTag(b.closest('.tag'));
+  else if (e.target === e.currentTarget) openTagEntry();
 });
 
 /* ===== 起動 ===== */
-try{ ensureCtx(); }catch(e){}
+/* 起動アニメーション：再生中のように列ごとにマスが弾み、少し広がりながら消えて画面が現れる */
+function playIntro(){
+  const intro = $('#intro'); if (!intro) return;
+  const done = () => intro.remove();
+  // 起動画面（同じ絵）を、重ねた絵が描けたあとに消してから動かし始める
+  try{ splash().hide({fadeOutDuration:0}); }catch(e){}
+  if (RM.matches || !intro.animate) return void anim(intro, [{opacity:1}, {opacity:0}], {duration:200}).then(done);
+  const cells = [...intro.querySelectorAll('i')], STEP = 110, HOLD = 150;
+  // 再生中のマスのように、列ごとに弾ませる（塗られたマスは一瞬濃くする）
+  for (let c = 0; c < 4; c++) cells.filter(el => +el.dataset.c === c).forEach(el => {
+    const on = el.classList.contains('on');
+    el.animate([
+      {transform:'scale(1)', background:on ? '#A0A0A0' : '#fff'},
+      {transform:'scale(1.32)', background:on ? '#333' : '#E3E3E3', offset:0.3},
+      {transform:'scale(1)', background:on ? '#A0A0A0' : '#fff'},
+    ], {duration:320, delay:HOLD + c * STEP, easing:EASE});
+  });
+  const grid = intro.firstElementChild;
+  grid.animate([{transform:'scale(1)', opacity:1}, {transform:'scale(1.35)', opacity:0}], {duration:380, delay:HOLD + 4 * STEP + 60, easing:EASE_IN, fill:'forwards'});
+  intro.animate([{opacity:1}, {opacity:0}], {duration:320, delay:HOLD + 4 * STEP + 140, easing:'ease-out', fill:'forwards'}).finished.then(done, done);
+}
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 (async () => {
   await Store.init();
@@ -1425,6 +1606,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
   state.patterns = all.filter(p => !isBlank(p));
   all.filter(isBlank).forEach(p => Store.remove(p.id).catch(() => {}));
   renderList(true);
+  // 画面を出してから、ライド・クラッシュ・リムの音を作り始める（音の出口は最初に音を鳴らすときに作る）
+  setTimeout(prerender, 50);
+  if (IS_APP) requestAnimationFrame(() => requestAnimationFrame(playIntro));
 })();
 </script>
 </body>

@@ -22,6 +22,9 @@ allprojects {
         google()
         mavenCentral()
     }
+    // デスクトップを iCloud で同期していると、ビルド途中のファイルに「〜 2」の複製ができてビルドが失敗する。
+    // 名前が .nosync で終わるフォルダは iCloud が同期しないので、そこに書き出す
+    layout.buildDirectory = file('build.nosync')
 }
 
 task clean(type: Delete) {

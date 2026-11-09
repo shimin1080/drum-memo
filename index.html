@@ -248,6 +248,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 #intro{display:none}
 .is-app #intro{display:grid;place-items:center;position:fixed;inset:0;z-index:50;background:#fff}
 .intro-grid{--g:calc(max(100vw, 100vh) * 172 / 1366);position:relative;width:var(--g);height:var(--g)}
+.is-android .intro-grid{--g:116px}   /* Android 12 以降の起動画面に出るマスと同じ大きさ（実測） */
 .intro-grid i{position:absolute;width:19.34%;height:19.34%;box-sizing:border-box;background:#fff;
   border:calc(var(--g) * 0.0164) solid #333;border-radius:calc(var(--g) * 0.036)}
 .intro-grid i.on{background:#A0A0A0}
@@ -474,11 +475,12 @@ function silentWavUrl(){
   let bin = ''; new Uint8Array(buf).forEach(b => bin += String.fromCharCode(b));
   return 'data:audio/wav;base64,' + btoa(bin);
 }
-/* iPhone アプリとして動いているか（アプリ版は音の扱いをアプリ本体側で設定済み） */
+/* iPhone・Android アプリとして動いているか（アプリ版は音の扱いをアプリ本体側で設定済み） */
 const IS_APP = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 const splash = () => window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SplashScreen;
 if (IS_APP){
   document.documentElement.classList.add('is-app');   // 起動アニメーション用の絵を出す（起動画面の裏で）
+  if (Capacitor.getPlatform() === 'android') document.documentElement.classList.add('is-android');
   // 念のため：何かあっても起動画面が出たままにならないよう、4秒で必ず閉じる
   setTimeout(() => { try{ splash().hide({fadeOutDuration:200}); }catch(e){} }, 4000);
 }
@@ -781,11 +783,17 @@ const clock = (() => {
     return {start(ms, fn){ clearInterval(t); t = setInterval(fn, ms); }, stop(){ clearInterval(t); t = null; }};
   }
 })();
+/* Android アプリ版：再生中は「再生中」の通知を出して、画面を消しても止められないようにする */
+function bgPlayback(on){
+  if (!document.documentElement.classList.contains('is-android')) return;
+  try{ const bp = Capacitor.Plugins.BackgroundPlayback; Promise.resolve(on ? bp.start() : bp.stop()).catch(() => {}); }catch(e){}
+}
 function play(p){
   audio(); stop(true);
   player.p = p; player.step = 0; player.beatT = ctx.currentTime + 0.06;
   player.timer = true; clock.start(25, tick); tick(); refreshPlayState();
   player.raf = requestAnimationFrame(drawStep);
+  bgPlayback(true);
 }
 /* 光るマスは、実際にスピーカーから音が出る時刻に合わせる
    （端末やイヤホンによる出力の遅れ＝outputLatency などを足す） */
@@ -810,7 +818,7 @@ function stop(silent){
   clock.stop(); player.timer = null;
   cancelAnimationFrame(player.raf); player.marks = [];
   player.p = null; showStep(-1);
-  if (!silent) refreshPlayState();
+  if (!silent){ refreshPlayState(); bgPlayback(false); }
 }
 const toggle = p => isPlaying(p) ? stop() : play(p);
 function tick(){

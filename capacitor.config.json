@@ -7,6 +7,9 @@
     "backgroundColor": "#FFFFFF"
   },
   "plugins": {
+    "SystemBars": {
+      "initialViewportFitValueHint": "cover"
+    },
     "SplashScreen": {
       "launchAutoHide": false,
       "launchFadeOutDuration": 0,
